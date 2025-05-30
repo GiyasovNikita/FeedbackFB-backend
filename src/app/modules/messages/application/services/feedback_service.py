@@ -1,22 +1,27 @@
-from sqlalchemy.orm import Session
-from io import BytesIO
-import base64
-import qrcode
 import uuid
+import os
+from dotenv import load_dotenv
 
-from src.app.modules.messages.infrastructure.db.models import Room, Location, Message, Admin
 from src.app.modules.messages.application.schemas import Feedback, RoomInfo
+from src.app.modules.messages.infrastructure.db.repos import (
+    RoomRepo,
+    LocationRepo,
+    MessageRepo,
+    AdminRepo
+)
 from src.utils import send_telegram_message
 
 
-def handle_send_feedback(token: str, feedback: Feedback, db: Session):
-    room = db.query(Room).filter(Room.qr_token == token).first()
+load_dotenv()
+
+FORM_URL = os.getenv("FORM_URL")
+
+def handle_send_feedback(token: str, feedback: Feedback, room_repo: RoomRepo, message_repo: MessageRepo):
+    room = room_repo.get_by_token(token)
     if not room:
         raise ValueError("Room not found")
 
-    message = Message(room_id=room.id, text=feedback.text)
-    db.add(message)
-    db.commit()
+    _ = message_repo.create(room_id=room.id, text=feedback.text)
 
     tg_msg = (
         f"\U0001F6A8 Новое сообщение!\n"
@@ -29,56 +34,45 @@ def handle_send_feedback(token: str, feedback: Feedback, db: Session):
     return {"status": "ok"}
 
 
-def handle_get_room_info(token: str, db: Session) -> RoomInfo:
-    room = db.query(Room).filter(Room.qr_token == token).first()
+def handle_get_room_info(token: str, room_repo: RoomRepo) -> RoomInfo:
+    room = room_repo.get_by_token(token)
     if not room:
         raise ValueError("Room not found")
     return RoomInfo(address=room.location.address, name=room.name)
 
 
-def handle_create_room(address: str, name: str, tg_group_id: int, db: Session):
-    location = db.query(Location).filter(Location.address == address).first()
+def handle_create_room(address: str, name: str, tg_group_id: int, location_repo: LocationRepo, room_repo: RoomRepo):
+    location = location_repo.get_by_address(address)
     if not location:
-        location = Location(address=address)
-        db.add(location)
-        db.commit()
-        db.refresh(location)
+        location = location_repo.create(address)
 
-    token = str(uuid.uuid4())[:8]
-    room = Room(location_id=location.id, name=name, tg_group_id=tg_group_id, qr_token=token)
-    db.add(room)
-    db.commit()
-
-    qr_link = f"https://yourdomain.com/feedback?token={token}"
-    img = qrcode.make(qr_link)
-    buf = BytesIO()
-    img.save(buf, format='PNG')
-    encoded_img = base64.b64encode(buf.getvalue()).decode("utf-8")
-
+    token = uuid.uuid4().hex[:8]
+    room = room_repo.create(location_id=location.id, name=name, tg_group_id=tg_group_id, token=token)
+    qr_link = f"{FORM_URL}/room/{token}"
     return {
         "qr_token": token,
         "qr_link": qr_link,
-        "qr_image_base64": encoded_img,
     }
 
-def handle_admin_auth(tg_user_id: str, db: Session):
-    admin = db.query(Admin).filter(Admin.username == str(tg_user_id)).first()
+
+def handle_admin_auth(tg_user_id: str, admin_repo: AdminRepo):
+    admin = admin_repo.is_admin(tg_user_id)
     return {"authorized": bool(admin)}
 
 
-def handle_add_location(address: str, db: Session):
-    if db.query(Location).filter(Location.address == address).first():
+def handle_add_location(address: str, location_repo: LocationRepo):
+    if location_repo.get_by_address(address):
         raise Exception
-    location = Location(address=address)
-    db.add(location)
-    db.commit()
+    location_repo.create(address)
     return {"status": "ok"}
 
-def handle_list_locations(db: Session):
-    return [l.address for l in db.query(Location).all()]
 
-def handle_rooms_by_location(address: str, db: Session):
-    location = db.query(Location).filter(Location.address == address).first()
+def handle_list_locations(location_repo: LocationRepo):
+    return [l.address for l in location_repo.list()]
+
+
+def handle_rooms_by_location(address: str, location_repo: LocationRepo):
+    location = location_repo.get_by_address(address)
     if not location:
         raise Exception
     return [{"name": r.name, "qr_token": r.qr_token} for r in location.rooms]
