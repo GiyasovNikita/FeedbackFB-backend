@@ -11,8 +11,8 @@ services:
       POSTGRES_PASSWORD: 1234
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+#    volumes:
+#      - postgres_data:/var/lib/postgresql/data
     networks:
       - feedback-net
 
@@ -48,8 +48,8 @@ services:
       - feedback-net
     command: ["python", "bot.py"]
 
-volumes:
-  postgres_data:
+#volumes:
+#  postgres_data:
 
 networks:
   feedback-net:
