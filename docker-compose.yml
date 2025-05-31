@@ -13,6 +13,44 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - feedback-net
+
+  backend:
+    build:
+      context: .
+      args:
+        SERVICE: backend
+    container_name: feedback-backend
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    networks:
+      - feedback-net
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+  bot:
+    build:
+      context: .
+      args:
+        SERVICE: bot
+    container_name: feedback-bot
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    networks:
+      - feedback-net
+    command: ["python", "bot.py"]
 
 volumes:
   postgres_data:
+
+networks:
+  feedback-net:
+    driver: bridge

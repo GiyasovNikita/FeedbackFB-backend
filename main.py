@@ -3,8 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.requests import Request
 from fastapi.exception_handlers import RequestValidationError
-from fastapi.exceptions import HTTPException
 from fastapi import status
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from src.app.modules.messages.api.endpoints import router  # роуты
 
@@ -14,12 +17,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
+allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+allowed_origins = [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:3000"],  # Адреса фронтенда
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Разрешить все методы
-    allow_headers=["*"],  # Разрешить все заголовки
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Подключение роутов
